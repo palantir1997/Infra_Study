@@ -1,0 +1,447 @@
+# 2026.03.27 네트워크 수업 정리
+
+## 1. DHCP (Dynamic Host Configuration Protocol)
+
+### 개념
+DHCP는 네트워크에 접속하는 장치(PC 등)에 IP 주소를 자동으로 할당해주는 프로토콜이다.  
+관리자가 일일이 IP를 설정하지 않아도 IP, Gateway, DNS 등을 자동으로 배포한다.
+
+### DHCP 설정
+
+```bash
+Router(config)# service dhcp
+
+Router(config)# ip dhcp pool test
+Router(dhcp-config)# network 192.168.100.0 255.255.255.0
+Router(dhcp-config)# default-router 192.168.100.254
+Router(dhcp-config)# dns-server 8.8.8.8
+```
+
+설명
+
+| 명령어 | 설명 |
+|---|---|
+| ip dhcp pool test | DHCP 풀 생성 |
+| network | IP 할당 범위 설정 |
+| default-router | 기본 게이트웨이 설정 |
+| dns-server | DNS 서버 설정 |
+
+### DHCP 제외 주소 설정
+
+```bash
+Router(config)# ip dhcp excluded-address 192.168.100.101 192.168.100.110
+```
+
+특정 IP는 DHCP가 할당하지 않도록 예약한다.  
+서버나 네트워크 장비 등에 사용한다.
+
+### DHCP 확인 명령어
+
+```bash
+show ip dhcp ?
+show ip dhcp conflict
+```
+
+### PC 설정
+PC는 DHCP 자동 할당 설정으로 두면 IP를 자동으로 받는다.
+
+---
+
+# 2. OSPF (Open Shortest Path First)
+
+## 개념
+OSPF는 링크 상태 기반 라우팅 프로토콜이다.
+
+특징
+
+- 대규모 네트워크에서 사용
+- 빠른 수렴 속도
+- Area 구조 사용
+- Metric = Cost
+
+---
+
+## OSPF 설정
+
+기존 EIGRP 제거
+
+```bash
+no router eigrp 10
+```
+
+OSPF 설정
+
+```bash
+Router(config)# router ospf 10
+Router(config-router)# network 10.10.10.0 0.0.0.255 area 0
+Router(config-router)# network 30.30.30.0 0.0.0.255 area 0
+Router(config-router)# network 192.168.100.0 0.0.0.255 area 0
+```
+
+설명
+
+| 항목 | 설명 |
+|---|---|
+| ospf 10 | OSPF Process ID |
+| area 0 | OSPF Backbone Area |
+| 0.0.0.255 | 와일드카드 마스크 |
+
+와일드카드 마스크는 OSPF와 EIGRP에서 사용한다.
+
+---
+
+## B 라우터 설정
+
+```bash
+Router(config)# router ospf 10
+network 10.10.10.0 0.0.0.255 area 0
+network 20.20.20.0 0.0.0.255 area 0
+network 30.30.30.0 0.0.0.255 area 0
+network 192.168.150.0 0.0.0.255 area 0
+```
+
+---
+
+## C 라우터 설정
+
+```bash
+Router(config)# router ospf 10
+network 20.20.20.0 0.0.0.255 area 0
+network 40.40.40.0 0.0.0.255 area 0
+network 192.168.200.0 0.0.0.255 area 0
+```
+
+---
+
+## D 라우터 설정
+
+```bash
+Router(config)# router ospf 10
+network 40.40.40.0 0.0.0.255 area 0
+network 192.168.250.0 0.0.0.255 area 1
+```
+
+---
+
+## OSPF Neighbor 확인
+
+```bash
+%OSPF-5-ADJCHG: Process 10, Nbr 192.168.100.254 on Serial0/3/0 from LOADING to FULL
+```
+
+OSPF Neighbor 관계가 정상적으로 FULL 상태로 형성되었다는 의미이다.
+
+---
+
+# 3. Loopback Interface
+
+## 개념
+Loopback은 가상 인터페이스이다.
+
+특징
+
+- 물리 인터페이스가 아님
+- 라우터가 꺼지지 않는 이상 항상 살아 있음
+- Router ID 설정에 자주 사용
+
+---
+
+## 설정
+
+```bash
+Router(config)# interface loopback 0
+Router(config-if)# ip address 100.100.100.100 255.255.255.0
+```
+
+OSPF 추가
+
+```bash
+network 100.100.100.0 0.0.0.255 area 1
+```
+
+---
+
+## 라우팅 테이블 확인
+
+```bash
+show ip route
+```
+
+예시
+
+```
+O IA 100.100.100.100/32 [110/65] via 40.40.40.80
+```
+
+---
+
+# 4. Router ID
+
+## Router ID 결정 순서
+
+1. 수동 설정 router-id  
+2. Loopback 중 가장 높은 IP  
+3. 활성 물리 인터페이스 중 가장 높은 IP
+
+---
+
+## Router ID 설정
+
+```bash
+Router(config)# router ospf 10
+Router(config-router)# router-id 1.1.1.1
+```
+
+변경 적용
+
+```bash
+clear ip ospf process
+```
+
+---
+
+## 확인
+
+```bash
+show ip protocols
+```
+
+---
+
+# 5. DR / BDR
+
+## 개념
+
+OSPF에서 라우터가 많아지면 LSA 트래픽이 증가한다.
+
+이를 줄이기 위해
+
+- DR (Designated Router)
+- BDR (Backup Designated Router)
+
+역할을 사용한다.
+
+---
+
+## 확인 명령어
+
+```bash
+show ip ospf interface
+show ip ospf interface se0/3/0
+show ip ospf interface gi0/0
+```
+
+예시
+
+```
+Designated Router (ID) 192.168.200.254
+```
+
+---
+
+# 6. FHRP (First Hop Redundancy Protocol)
+
+## 개념
+
+게이트웨이 장애 발생 시 자동으로 다른 라우터가 대신 동작하도록 하는 기술이다.
+
+---
+
+## 종류
+
+| 프로토콜 | 설명 |
+|---|---|
+| HSRP | Cisco 전용 |
+| VRRP | 표준 프로토콜 |
+| GLBP | 로드 밸런싱 가능 |
+
+---
+
+# 7. HSRP (Hot Standby Router Protocol)
+
+## 개념
+
+두 개 이상의 라우터가 하나의 가상 게이트웨이 IP를 공유한다.
+
+- Active : 실제 게이트웨이
+- Standby : 대기
+
+---
+
+## Router 1 설정
+
+```bash
+Router(config)# interface gi0/0
+Router(config-if)# ip address 192.168.100.1 255.255.255.0
+Router(config-if)# standby 1 ip 192.168.100.254
+Router(config-if)# standby 1 priority 105
+Router(config-if)# standby 1 preempt
+```
+
+---
+
+## Router 2 설정
+
+```bash
+Router(config)# interface gi0/0
+Router(config-if)# ip address 192.168.100.2 255.255.255.0
+Router(config-if)# standby 1 ip 192.168.100.254
+Router(config-if)# standby 1 preempt
+```
+
+---
+
+## 설명
+
+| 명령어 | 설명 |
+|---|---|
+| standby 1 | HSRP 그룹 번호 |
+| standby 1 ip | 가상 게이트웨이 |
+| priority | 우선순위 |
+| preempt | 우선순위 높으면 Active 탈환 |
+
+---
+
+## 확인
+
+```bash
+show standby brief
+```
+
+---
+
+# 8. L3 Switch 설정
+
+Layer3 스위치는 라우팅 기능이 가능하다.
+
+```bash
+Switch(config)# ip routing
+
+Switch(config)# interface fa0/1
+no switchport
+ip address 3.3.3.3 255.255.255.0
+no shutdown
+```
+
+---
+
+# 9. VLAN 설정
+
+## VLAN 생성
+
+```bash
+vlan 100
+name Management
+
+vlan 200
+name Marketing
+
+vlan 300
+name Informain
+```
+
+---
+
+## Access Port
+
+```bash
+interface fa0/2
+switchport mode access
+switchport access vlan 100
+```
+
+---
+
+## Trunk Port
+
+```bash
+interface fa0/1
+switchport mode trunk
+```
+
+---
+
+# 10. Router-on-a-Stick (Sub Interface)
+
+## 개념
+라우터 하나의 인터페이스로 여러 VLAN을 라우팅하는 기술이다.
+
+---
+
+## 설정
+
+```bash
+interface gig0/0
+no ip address
+no shutdown
+
+interface gig0/0.100
+encapsulation dot1q 100
+ip address 192.168.100.254 255.255.255.0
+
+interface gig0/0.200
+encapsulation dot1q 200
+ip address 192.168.200.254 255.255.255.0
+
+interface gig0/0.300
+encapsulation dot1q 300
+ip address 192.168.250.254 255.255.255.0
+```
+
+---
+
+# 11. EIGRP 재분배 (Redistribution)
+
+## 개념
+서로 다른 라우팅 프로토콜 간 경로 정보를 교환하는 기술이다.
+
+---
+
+## 설정
+
+```bash
+router eigrp 10
+redistribute eigrp 20 metric 1000 100 255 1 1500
+no auto-summary
+
+router eigrp 20
+redistribute eigrp 10 metric 1000 100 255 1 1500
+no auto-summary
+```
+
+---
+
+# 12. 확인 명령어
+
+## 라우터
+
+```bash
+show ip route
+show ip eigrp neighbors
+show ip protocols
+```
+
+## PC
+
+```bash
+ping 192.168.100.254
+tracert 192.168.110.100
+```
+
+---
+
+# 정리
+
+오늘 학습한 핵심 기술
+
+- DHCP
+- OSPF
+- Loopback
+- Router ID
+- DR / BDR
+- FHRP
+- HSRP
+- VLAN
+- Router-on-a-Stick
+- EIGRP Redistribution
+- L3 Switch Routing
