@@ -15,7 +15,7 @@
 ---
 
 
-# OSPF Network IP Address Table
+# OSPF Network IP Address Table (헷갈리는 아이피 양식)
 
 ## Site A — 192.168.100.0/24
 
