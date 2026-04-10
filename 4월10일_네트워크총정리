@@ -1,0 +1,248 @@
+네트워크 구성도랑 이전 설정 내역 다 확인했습니다! 구성도를 보니 **Router X - Router Y - Router Z** 3개 라우터에 GRE Tunnel(EIGRP 100), 그리고 Y 라우터 아래 스위치 2개(V10/V20)가 있는 구조네요.
+
+이전 실습 기록 + 구성도 기반으로 전체 명령어 싹 정리해 드립니다.
+
+---
+
+## 네트워크 구성 실기 - 전체 명령어 정리
+
+<img src="https://example.com/image.png" width="400"/>
+
+---
+
+### IP 주소 정리 (구성도 기준)
+
+| 장치 | 인터페이스 | IP 주소 |
+|------|-----------|---------|
+| Router X | Gi0/0 (→A,B 쪽) | 192.168.100.254 |
+| Router X | Se (→Y) | 1.1.1.1/24 |
+| Router X | Tunnel 0 | 10.10.10.10/24 |
+| Router Y | Se (→X) | 1.1.1.2/24 |
+| Router Y | Se (→Z) | 2.2.2.2/24 |
+| Router Y | Gi0/0 (→스위치) | VLAN 서브인터페이스 |
+| Router Y | Tunnel 0 | 10.10.10.20/24 |
+| Router Z | Se (→Y) | 2.2.2.1/24 |
+| Router Z | Gi0/0 (→C, WEB) | 192.168.200.254 |
+| Router Z | Tunnel 0 | 10.10.10.21/24 |
+| A | - | 192.168.100.100 |
+| B | - | 192.168.100.200 |
+| C | - | 192.168.200.100 |
+| WEB Server | - | 192.168.200.200 |
+| V10 PC들 | - | 192.168.150.x |
+| V20 PC들 | - | 192.168.150.x or 별도 대역 |
+
+---
+
+### 1. Router X 설정
+
+```bash
+Router_X# conf t
+
+! LAN 포트 (A, B PC 쪽)
+Router_X(config)# interface gi0/0
+Router_X(config-if)# ip address 192.168.100.254 255.255.255.0
+Router_X(config-if)# no shutdown
+
+! WAN 포트 (→ Router Y)
+Router_X(config)# interface se0/3/0
+Router_X(config-if)# ip address 1.1.1.1 255.255.255.0
+Router_X(config-if)# no shutdown
+
+! GRE Tunnel 설정
+Router_X(config)# interface tunnel 0
+Router_X(config-if)# ip address 10.10.10.10 255.255.255.0
+Router_X(config-if)# tunnel source se0/3/0
+Router_X(config-if)# tunnel destination 1.1.1.2
+Router_X(config-if)# no shutdown
+
+! EIGRP 라우팅
+Router_X(config)# router eigrp 100
+Router_X(config-router)# network 192.168.100.0
+Router_X(config-router)# network 10.10.10.0
+Router_X(config-router)# no auto-summary
+```
+
+---
+
+### 2. Router Y 설정
+
+```bash
+Router_Y# conf t
+
+! WAN 포트 (← Router X)
+Router_Y(config)# interface se0/3/0
+Router_Y(config-if)# ip address 1.1.1.2 255.255.255.0
+Router_Y(config-if)# no shutdown
+
+! WAN 포트 (→ Router Z)
+Router_Y(config)# interface se0/3/1
+Router_Y(config-if)# ip address 2.2.2.2 255.255.255.0
+Router_Y(config-if)# no shutdown
+
+! LAN 물리 포트 (스위치 연결) - 반드시 먼저 no shutdown!
+Router_Y(config)# interface gi0/0
+Router_Y(config-if)# no shutdown
+
+! VLAN 10 서브인터페이스 (V10 게이트웨이)
+Router_Y(config)# interface gi0/0.10
+Router_Y(config-subif)# encapsulation dot1Q 10
+Router_Y(config-subif)# ip address 192.168.150.254 255.255.255.0
+Router_Y(config-subif)# no shutdown
+
+! VLAN 20 서브인터페이스 (V20 게이트웨이)
+Router_Y(config)# interface gi0/0.20
+Router_Y(config-subif)# encapsulation dot1Q 20
+Router_Y(config-subif)# ip address 192.168.160.254 255.255.255.0
+Router_Y(config-subif)# no shutdown
+
+! GRE Tunnel (X 방향)
+Router_Y(config)# interface tunnel 0
+Router_Y(config-if)# ip address 10.10.10.20 255.255.255.0
+Router_Y(config-if)# tunnel source se0/3/0
+Router_Y(config-if)# tunnel destination 1.1.1.1
+Router_Y(config-if)# no shutdown
+
+! EIGRP 라우팅
+Router_Y(config)# router eigrp 100
+Router_Y(config-router)# network 192.168.150.0
+Router_Y(config-router)# network 192.168.160.0
+Router_Y(config-router)# network 10.10.10.0
+Router_Y(config-router)# network 1.1.1.0
+Router_Y(config-router)# network 2.2.2.0
+Router_Y(config-router)# no auto-summary
+```
+
+---
+
+### 3. Router Z 설정
+
+```bash
+Router_Z# conf t
+
+! WAN 포트 (← Router Y)
+Router_Z(config)# interface se0/3/0
+Router_Z(config-if)# ip address 2.2.2.1 255.255.255.0
+Router_Z(config-if)# no shutdown
+
+! LAN 포트 (C, WEB Server 쪽)
+Router_Z(config)# interface gi0/0
+Router_Z(config-if)# ip address 192.168.200.254 255.255.255.0
+Router_Z(config-if)# no shutdown
+
+! GRE Tunnel (X 방향 또는 Z가 포함된 경우)
+Router_Z(config)# interface tunnel 0
+Router_Z(config-if)# ip address 10.10.10.21 255.255.255.0
+Router_Z(config-if)# tunnel source se0/3/0
+Router_Z(config-if)# tunnel destination 1.1.1.1
+Router_Z(config-if)# no shutdown
+
+! EIGRP 라우팅
+Router_Z(config)# router eigrp 100
+Router_Z(config-router)# network 192.168.200.0
+Router_Z(config-router)# network 10.10.10.0
+Router_Z(config-router)# network 2.2.2.0
+Router_Z(config-router)# no auto-summary
+```
+
+---
+
+### 4. SW_Left (왼쪽 스위치, V10/V20 연결)
+
+```bash
+SW_Left# conf t
+
+! VLAN 생성
+SW_Left(config)# vlan 10
+SW_Left(config-vlan)# vlan 20
+SW_Left(config-vlan)# exit
+
+! 핵심 포인트: PC 연결 포트에 VLAN 할당
+SW_Left(config)# interface fa0/1
+SW_Left(config-if)# switchport mode access
+SW_Left(config-if)# switchport access vlan 10
+SW_Left(config-if)# no shutdown
+
+SW_Left(config)# interface fa0/2
+SW_Left(config-if)# switchport mode access
+SW_Left(config-if)# switchport access vlan 20
+SW_Left(config-if)# no shutdown
+
+! 라우터/중간 스위치 연결 포트 → Trunk
+SW_Left(config)# interface fa0/3
+SW_Left(config-if)# switchport mode trunk
+SW_Left(config-if)# no shutdown
+
+! 오른쪽 스위치 연결 포트 → Trunk
+SW_Left(config)# interface fa0/4
+SW_Left(config-if)# switchport mode trunk
+SW_Left(config-if)# no shutdown
+```
+
+---
+
+### 5. SW_Right (오른쪽 스위치, V20/V10 연결)
+
+```bash
+SW_Right# conf t
+
+! VLAN 생성
+SW_Right(config)# vlan 10
+SW_Right(config-vlan)# vlan 20
+SW_Right(config-vlan)# exit
+
+! 핵심 포인트: PC 연결 포트에 VLAN 할당
+SW_Right(config)# interface fa0/1
+SW_Right(config-if)# switchport mode access
+SW_Right(config-if)# switchport access vlan 20   ! V20 PC
+SW_Right(config-if)# no shutdown
+
+SW_Right(config)# interface fa0/2
+SW_Right(config-if)# switchport mode access
+SW_Right(config-if)# switchport access vlan 10   ! V10 PC
+SW_Right(config-if)# no shutdown
+
+! 왼쪽 스위치 연결 포트 → Trunk
+SW_Right(config)# interface fa0/3
+SW_Right(config-if)# switchport mode trunk
+SW_Right(config-if)# no shutdown
+```
+
+---
+
+### 6. PC IP 설정 요약
+
+| PC | IP | 게이트웨이 |
+|----|-----|----------|
+| A | 192.168.100.100 | 192.168.100.254 |
+| B | 192.168.100.200 | 192.168.100.254 |
+| C | 192.168.200.100 | 192.168.200.254 |
+| WEB | 192.168.200.200 | 192.168.200.254 |
+| V10 PC | 192.168.150.x | 192.168.150.254 |
+| V20 PC | 192.168.160.x | 192.168.160.254 |
+
+---
+
+### 7. 최종 검증 명령어
+
+```bash
+! 라우터에서 확인
+Router_X# show ip route
+Router_X# show interfaces tunnel 0
+Router_X# ping 192.168.200.100   ! A → C 테스트
+
+! PC에서 확인 (cmd)
+arp -d                            ! ARP 캐시 초기화 (꼬인 거 제거)
+ping 192.168.160.1               ! V10 → V20 VLAN 간 통신 테스트
+tracert [WEB서버IP]              ! B → WEB, Tunnel 경로 확인
+```
+
+---
+
+### 오늘의 핵심 에러 포인트 요약
+
+오늘 제일 오래 걸린 이유가 딱 두 가지였을 겁니다:
+
+1. **스위치 Access 포트 VLAN 미할당** — 트렁크는 다 뚫었는데 PC 꽂힌 포트에 `switchport access vlan XX` 안 하면 PC가 VLAN에 소속이 안 돼서 아예 통신 불가
+2. **`gi0/0` 물리 포트 no shutdown 누락** — 서브인터페이스(.10, .20)만 올려도 부모 포트가 down이면 전부 무용지물
+
+다음엔 이 두 개만 먼저 체크하면 훨씬 빨리 끝날 거예요! 
